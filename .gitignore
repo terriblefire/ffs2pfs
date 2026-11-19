@@ -1,0 +1,34 @@
+# Only the sources, the test scripts and the pfs3aio binary are in git. The rest
+# of this folder is local: disk images (some hold Commodore's FastFileSystem in
+# their RDB), logs, builds, and copies of other projects.
+/*
+!/.gitignore
+!/README.md
+!/ffs2pfs_analyse.py
+!/c/
+!/f2p/
+!/check/
+!/tests/
+!/tools/
+!/ref/
+
+/c/*
+!/c/*.c
+!/c/*.h
+!/c/Makefile
+/c/pfs3aio_bin.c
+
+/ref/*
+!/ref/pfs3aio
+!/ref/pfs3aio.LICENSE
+
+/tests/*
+!/tests/*.py
+!/tests/*.sh
+!/tests/k8_ffs.json
+!/tests/k8o_ffs.json
+
+/tools/amiga/*
+!/tools/amiga/*.c
+
+__pycache__/
