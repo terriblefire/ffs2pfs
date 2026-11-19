@@ -1,0 +1,32 @@
+# Build the AmigaOS binary (c/ffs2pfs, with pfs3aio built in) and the host build
+# (c/f2p_host, the same converter on a disk image file). The Amiga build uses
+# vbcc and the NDK 3.2 in terriblefire78/spirom, an arm64 image, so it runs on an
+# arm64 runner. c/ffs2pfs is kept as a workflow artifact.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  amiga:
+    runs-on: ubuntu-24.04-arm
+    container: terriblefire78/spirom:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build c/ffs2pfs (vbcc, NDK 3.2)
+        run: make -C c ffs2pfs NDK32=$NDK32
+      - name: Version
+        run: strings c/ffs2pfs | grep -E '\$VER' || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffs2pfs
+          path: c/ffs2pfs
+
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build c/f2p_host (gcc)
+        run: make -C c f2p_host

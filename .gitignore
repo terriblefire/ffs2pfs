@@ -3,6 +3,7 @@
 # their RDB), logs, builds, and copies of other projects.
 /*
 !/.gitignore
+!/.github/
 !/README.md
 !/ffs2pfs_analyse.py
 !/c/
