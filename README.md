@@ -86,10 +86,12 @@ torn (half old, half new, or garbage), then runs it again: to roll back, or to f
 | test | build | write points | cases | failures |
 |---|---|---|---|---|
 | rollback after a power cut, and automatic rollback after a failed write | Amiga binary under vamos | every write of all 7 images, clean and torn | 85,536 rollbacks, 3,024 rollbacks that were themselves cut off or failed | 0 |
+| rollback, as above | host build | every write of all 7 images, clean and torn | 85,536 rollbacks, 2,800 rollbacks that were themselves cut off or failed | 0 |
+| finishing after a power cut | host build | every write of all 7 images, clean and torn | 42,768 resumes, 1,400 double crashes | 0 |
 | finishing after a power cut | Amiga binary under vamos | 80 sampled writes of t4t and l8o, clean and torn | 320 resumes, 80 double crashes | 0 |
 
 The vamos run took 7¼ hours with 12 tests running at once (`tests/run_vamos_all.sh`).
-`tests/run_host_all.sh` runs the same tests on the host build.
+The host run took 26 minutes, also 12 at once (`tests/run_host_all.sh`).
 
 The test images (made by `tools/`, see below):
 
