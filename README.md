@@ -12,6 +12,9 @@ FFS volume it was.
   again from the disk alone and carries on from where it stopped.
 - If anything fails, the volume is rolled back to FFS, exactly as it was.
 
+The latest build is the `ffs2pfs` file of the [vLATEST release](https://github.com/terriblefire/ffs2pfs/releases/tag/vLATEST),
+made by GitHub Actions from every push to main. Copy it to C: (or anywhere) on the Amiga.
+
 ## Usage
 
 ```

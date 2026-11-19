@@ -1,7 +1,9 @@
 # Build the AmigaOS binary (c/ffs2pfs, with pfs3aio built in) and the host build
 # (c/f2p_host, the same converter on a disk image file). The Amiga build uses
 # vbcc and the NDK 3.2 in terriblefire78/spirom, an arm64 image, so it runs on an
-# arm64 runner. c/ffs2pfs is kept as a workflow artifact.
+# arm64 runner. c/ffs2pfs is kept as a workflow artifact, and every push to main
+# replaces the vLATEST prerelease with it (and the pfs3aio licence, which must go
+# with the binary since pfs3aio is built into it).
 name: build
 
 on:
@@ -30,3 +32,33 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build c/f2p_host (gcc)
         run: make -C c f2p_host
+
+  vlatest:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [amiga, host]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: vlatest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffs2pfs
+          path: out
+      - name: Replace the vLATEST release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp ref/pfs3aio.LICENSE out/
+          { echo "Latest build of main (${GITHUB_SHA::8}), replaced on every push to main."
+            echo
+            echo '```'
+            strings out/ffs2pfs | grep -oE '\$VER: .+' | sed 's/^\$VER: //'
+            echo '```'
+            echo
+            echo "ffs2pfs carries pfs3aio, under the licence in pfs3aio.LICENSE."
+            echo "This product includes software developed by Michiel Pelt."; } > out/notes.md
+          gh release delete vLATEST --yes --cleanup-tag || true
+          gh release create vLATEST out/ffs2pfs out/pfs3aio.LICENSE --prerelease --target "$GITHUB_SHA" \
+            --title "vLATEST (main ${GITHUB_SHA::8})" --notes-file out/notes.md
