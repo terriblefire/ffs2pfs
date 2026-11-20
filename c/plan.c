@@ -1,4 +1,4 @@
-/* The conversion plan (plan.py): PFS3 layout, where data goes, the checks
+/* The conversion plan: PFS3 layout, where data goes, the checks
  * before anything is written, and the plan's on-disk form.
  *
  * On disk ('F2PB'): a 16-byte header (magic, version, length, CRC32 of the

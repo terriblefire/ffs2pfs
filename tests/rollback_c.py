@@ -13,10 +13,9 @@ read as that tree (as crash_c2.py). Any FFS block size. --shard=I/N runs every N
 its share of the double faults) from the Ith, on its own work image, so N copies can run at once."""
 import json, os, random, shutil, struct, subprocess, sys, tempfile, time, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..'))
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb, rdbfs
-from f2p.pfs3read import PFS3
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb, rdbfs
+from amidisk.pfs3read import PFS3
 
 TOOL = os.path.join(HERE, '..', 'c', 'f2p_host')
 BIN = os.path.join(HERE, '..', 'ref', 'pfs3aio')
@@ -85,7 +84,7 @@ def ffs_free_sectors():
 
 FREE, P, SPB = ffs_free_sectors()
 if SPB == 1:                                     # cross-check with the Python FFS reader
-    from f2p.ffs import FFS
+    from amidisk.ffs import FFS
     f = FFS(Part(BlockDev(img), P['start'], P['blocks']), P['reserved'])
     f.read()
     assert {P['start'] + k for k in f.free} == FREE, "free maps disagree"

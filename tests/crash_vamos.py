@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """crash_vamos.py IMAGE [DOUBLE] [--torn=MODE] [--sample=N] - the Amiga binary (c/ffs2pfs) under vamos
 cut off after every block write (or N sampled ones), then resumed by a fresh run,
-then checked with f2p.verify against the plan made from the untouched image;
+then checked with amidisk.verify against the untouched FFS volume;
 plus DOUBLE runs crashed twice. Runs the binary once per crash, on a copy."""
 import os, random, shutil, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..'))
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb, plan
-from f2p.ffs import FFS
-from f2p.verify import verify
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb
+from amidisk.verify import verify, reference
 
 VAMOS = os.path.join(HERE, '..', '.venv', 'bin', 'vamos')
 VAMOS = os.environ.get('VAMOS') or (VAMOS if os.path.exists(VAMOS) else 'vamos')
@@ -23,7 +21,7 @@ SAMPLE = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('--sample=
 work = 'tests/_vamos_work.img'          # vamos: a path relative to the current directory
 d = BlockDev(img); p0 = rdb.partitions(d)[0]; part = Part(d, p0['start'], p0['blocks'])
 PART = p0['name']
-ref, _ = plan.build(part, FFS(part).read())
+ref = reference(part)
 
 
 def tool(crash=None):

@@ -1,7 +1,6 @@
 /* ffs2pfs: crash-safe in-place OFS/FFS -> PFS3 conversion.
  * The portable core (no AmigaOS calls). The front end (host.c for the tests,
- * amiga.c for the real thing) supplies block I/O, logging and memory.
- * Mirrors the Python model in ../f2p block for block. */
+ * amiga.c for the real thing) supplies block I/O, logging and memory. */
 #ifndef F2P_H
 #define F2P_H
 
@@ -78,7 +77,7 @@ int rdb_valid(const u8 *b);
 int rdb_find_rdsk(blockdev *d, u32 *blk, u8 *rdsk);   /* 1 = found a valid RDSK */
 int rdb_partitions(blockdev *d, partinfo *out, int max);   /* count, or -1 */
 
-/* pfs3aio into the RDB (rdbfs.py) */
+/* pfs3aio into the RDB */
 typedef struct {
     int existing;                  /* PFS\3 filesystem already in the RDB */
     u32 fshd, nlseg, *lsegs;       /* new FSHD and LSEG blocks */

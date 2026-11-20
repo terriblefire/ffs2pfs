@@ -1,4 +1,4 @@
-/* RDB: RDSK/PART reading, checksums; pfs3aio into the RDB (rdbfs.py) */
+/* RDB: RDSK/PART reading, checksums; pfs3aio into the RDB */
 #include "f2p.h"
 
 #define RESCUE_MAGIC 0x46325052UL       /* 'F2PR' */
@@ -212,7 +212,7 @@ static int make_inner(blockdev *d, const u8 *bin, u32 binlen, u32 version, rdbfs
     memcpy(r->bin, bin, binlen);
     r->binlen = binlen;
     r->nwrites = r->nlseg + 1 + (last != NOBLK) + 5;
-    /* as rdbfs.py: HighRDSKBlock = max(old, RDB blocks in use, FSHD, LSEGs);
+    /* HighRDSKBlock = max(old, RDB blocks in use, FSHD, LSEGs);
        RDBBlocksHi = max(old, every new block incl. the rescue pair) */
     r->high = L(rd, 38);
     for (i = 0; i < used.n; i++)

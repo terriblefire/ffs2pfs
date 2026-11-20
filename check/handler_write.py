@@ -4,15 +4,15 @@ Exercise a converted volume with the real pfs3aio handler (AmiFUSE, read-write,
 on a copy): delete some original files, make a directory, write new random
 files until the disk is full, flush. Then check, read-only with the handler,
 that every original file not deleted is unchanged and every new file reads
-back, and run f2p.pfs3read's consistency check. A wrong data bitmap shows up
+back, and run amidisk.pfs3read's consistency check. A wrong data bitmap shows up
 as an original file overwritten by a new one."""
 import json, os, random, shutil, subprocess, sys, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..'))
+sys.path.insert(0, os.path.join(HERE, '..', 'tests'))
 exec(open(os.path.join(HERE, 'pfsbridge.py')).read().split("img, drv = sys.argv[1], sys.argv[2]")[0])
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb
-from f2p.pfs3read import PFS3
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb
+from amidisk.pfs3read import PFS3
 
 src = sys.argv[1]
 drv = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/git/tfdemocd/pfs3aio')

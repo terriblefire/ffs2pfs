@@ -3,15 +3,15 @@
 (from the RDB) on a copy of a converted volume: delete objects that have hard
 links (pfs3aio promotes a link), delete links, add hard links to objects with
 and without links, add soft links. Then walk read-only and compare with what
-must be there, and run f2p.pfs3read's checks (link chains included)."""
+must be there, and run amidisk.pfs3read's checks (link chains included)."""
 import os, random, shutil, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path[:0] = [HERE, os.path.join(HERE, '..')]
+sys.path[:0] = [HERE, os.path.join(HERE, '..', 'tests')]
 from amibridge import HandlerBridge, Path, make_link, rdb_driver
 from pfsbridge import walk
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb
-from f2p.pfs3read import PFS3
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb
+from amidisk.pfs3read import PFS3
 
 src = sys.argv[1]
 rnd = random.Random(int(sys.argv[2]) if len(sys.argv) > 2 else 1)

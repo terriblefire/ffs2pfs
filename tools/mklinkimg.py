@@ -4,7 +4,7 @@ links, made by the real FFS 40.1 handler (AmiFUSE). Files and directories come
 from mktestimg2.py; FFS (from the RDB) then adds the links."""
 import os, random, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path[:0] = [os.path.join(HERE, '..'), os.path.join(HERE, '..', 'check')]
+sys.path[:0] = [os.path.join(HERE, '..', 'tests'), os.path.join(HERE, '..', 'check')]
 from amibridge import HandlerBridge, make_link, Path
 
 out, mb, seed = sys.argv[1], sys.argv[2], int(sys.argv[3])

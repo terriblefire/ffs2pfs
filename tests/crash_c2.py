@@ -2,14 +2,13 @@
 """crash_c2.py IMAGE EXPECTED.json [DOUBLE] [--torn=MODE] [--sample=N] [--name=P]
 Like crash_c.py, but the result is checked against what the real FFS handler read
 from the untouched volume (EXPECTED.json, from check/pfsbridge.py): every crashed
-and resumed conversion must read back, through f2p.pfs3read, as exactly that tree,
+and resumed conversion must read back, through amidisk.pfs3read, as exactly that tree,
 with no PFS3 consistency problems. Works for any FFS block size."""
 import json, os, random, shutil, subprocess, sys, tempfile, time, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..'))
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb, rdbfs
-from f2p.pfs3read import PFS3
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb, rdbfs
+from amidisk.pfs3read import PFS3
 
 TOOL = os.path.join(HERE, '..', 'c', 'f2p_host')
 BIN = os.path.join(HERE, '..', 'ref', 'pfs3aio')

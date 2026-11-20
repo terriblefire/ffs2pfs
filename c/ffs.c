@@ -1,7 +1,7 @@
-/* OFS/FFS (DOS\0..DOS\5) reader: the whole volume into the model (ffs.py).
+/* OFS/FFS (DOS\0..DOS\5) reader: the whole volume into the model.
  * The directory walk is iterative (small Amiga stacks) and visits entries in
- * the same order as the Python model: hash slot order, chain order, a
- * directory's contents straight after its own entry. */
+ * this order: hash slot order, chain order, a directory's contents straight
+ * after its own entry. */
 #include "f2p.h"
 
 #define T_HEADER 2

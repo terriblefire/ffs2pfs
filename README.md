@@ -67,11 +67,10 @@ make -C c ffs2pfs NDK32=/path/to/NDK3.2   # c/ffs2pfs: the AmigaOS binary, with 
 make -C c f2p_host                         # c/f2p_host: the same converter on a disk image file
 ```
 
-`c/` is the converter (C). `f2p/` is the Python prototype it was ported from, which the
-tests also use to read FFS and PFS3 images. `ffs2pfs_analyse.py` is a read-only
-analysis of an image. `check/` reads converted images with the real pfs3aio handler
-(through AmiFUSE). `tools/amiga/crcwalk.c` lists the CRC of every file on a volume,
-for comparing a disk before and after on real hardware.
+`c/` is the converter. `tests/` holds the test harnesses (Python) and `tests/amidisk/`,
+the readers they check images with (RDB, FFS, PFS3). `check/` reads converted images
+with the real pfs3aio handler (through AmiFUSE). `tools/amiga/crcwalk.c` lists the CRC
+of every file on a volume, for comparing a disk before and after on real hardware.
 
 ## Testing
 
@@ -124,24 +123,13 @@ converted, and the CRC of every file was taken before and after with `crcwalk`:
 
 ### Earlier builds (before rollback was added)
 
-Finishing after a power cut, with the Python prototype and the first C version:
+Finishing after a power cut, with the first C version:
 
-| build | volume (block writes in a conversion) | write points | torn writes too | failures |
-|---|---|---|---|---|
-| Python | t4 (590) | every write, 500 double crashes | yes, 3 kinds | 0 |
-| Python | o8 (5,665) | every write, 300 double crashes | yes | 0 |
-| Python | l8f (1,057) | every write, 300 double crashes | yes | 0 |
-| Python | l8o (4,482) | 1,500 sampled, 200 double crashes | yes | 0 |
-| Python | h16 (975) | 300 sampled, 100 double crashes | yes | 0 |
-| Python | a copy of a CD32 hard disk (277,498) | 40 sampled, 10 double crashes | yes | 0 |
-| Python | a copy of a Workbench disk (19,769) | 200 sampled, 50 double crashes | yes | 0 |
-| C | t4t (992) | every write, 200 double crashes | yes, 3 kinds | 0 |
-| C | k8 (1,373) | every write, 200 double crashes | yes, 2 kinds | 0 |
-| C | k8o (5,704) | every write, 100 double crashes | no | 0 |
-
-The converted CD32 and Workbench disks were then read with the real pfs3aio handler
-(through AmiFUSE): all 11,177 and 3,172 files matched the FFS originals, and the
-handler deleted some and wrote 300 new files on each with no errors.
+| volume (block writes in a conversion) | write points | torn writes too | failures |
+|---|---|---|---|
+| t4t (992) | every write, 200 double crashes | yes, 3 kinds | 0 |
+| k8 (1,373) | every write, 200 double crashes | yes, 2 kinds | 0 |
+| k8o (5,704) | every write, 100 double crashes | no | 0 |
 
 ## Limits
 

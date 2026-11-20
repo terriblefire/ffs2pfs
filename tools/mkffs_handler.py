@@ -4,8 +4,8 @@ FFS 40.1 (AmiFUSE): RDB with SectorPerBlock=SPB, formatted by FFS, then director
 files (random sizes), hard and soft links written through FFS."""
 import os, random, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path[:0] = [os.path.join(HERE, '..'), os.path.join(HERE, '..', 'check')]
-from f2p.rdb import make_rdb_disk
+sys.path[:0] = [os.path.join(HERE, '..', 'tests'), os.path.join(HERE, '..', 'check')]
+from amidisk.rdb import make_rdb_disk
 from amibridge import HandlerBridge, Path, make_link
 from amifuse.fuse_fs import format_volume
 

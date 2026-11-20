@@ -1,6 +1,6 @@
 /* Crash-safe OFS/FFS -> PFS3 conversion: anchors, journal, phases, resume
- * (convert.py). Every write may be the last or be torn; the state is always
- * found again from the disk alone.
+ * Every write may be the last or be torn; the state is always found again from
+ * the disk alone.
  *
  *   START     plan A, plan B, journal A, journal B, anchor B (block 1)
  *   LOCK      anchor A over the boot block, RDB DosType := 'F2P\0'

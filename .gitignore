@@ -5,9 +5,7 @@
 !/.gitignore
 !/.github/
 !/README.md
-!/ffs2pfs_analyse.py
 !/c/
-!/f2p/
 !/check/
 !/tests/
 !/tools/
@@ -26,6 +24,7 @@
 /tests/*
 !/tests/*.py
 !/tests/*.sh
+!/tests/amidisk/
 !/tests/k8_ffs.json
 !/tests/k8o_ffs.json
 

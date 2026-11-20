@@ -1,13 +1,22 @@
 """Check a finished conversion: read the partition back as PFS3 (pfs3read) and
-compare every entry and every file's contents with the plan made from the
-untouched FFS volume."""
+compare every entry and every file's contents with the untouched FFS volume
+(reference())."""
 import zlib
 from . import rdb as rdbmod
 from .blockdev import Part, BS
-from .convert import DOSTYPE_PFS3
-from .pfs3build import boot0
+from .ffs import FFS
 from .pfs3read import PFS3, ST_FILE, ST_USERDIR, ST_SOFTLINK, ST_LINKFILE, ST_LINKDIR
 from . import rdbfs
+from .rdbfs import DOSTYPE_PFS3
+
+BOOT0 = b'PFS\x01' + bytes(BS - 4)      # the PFS3 boot block
+
+
+def reference(part):
+    """what verify() compares with: the entries, file CRCs and volume name of the FFS volume"""
+    ffs = FFS(part).read()
+    return dict(entries=ffs.entries, volname=ffs.volname,
+                crcs={e['idx']: ffs.file_crc(e) for e in ffs.entries if e['kind'] == 'file'})
 
 
 def ffs_paths(body):
@@ -28,7 +37,7 @@ def verify(dev, pname, body, strict_boot1=True, binary=None):
     if p['dostype'] != DOSTYPE_PFS3:
         errs.append("RDB DosType %08x, not PFS\\3" % p['dostype'])
     part = Part(dev, p['start'], p['blocks'])
-    if part.read(0) != boot0():
+    if part.read(0) != BOOT0:
         errs.append("block 0 is not the PFS3 boot block")
     if strict_boot1 and any(part.read(1)):
         errs.append("block 1 not zero")

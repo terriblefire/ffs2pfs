@@ -2,8 +2,8 @@
 """mktestimg.py OUT [MB] [FILL%] [SEED] - an RDB disk image with one FFS (DOS\\1)
 partition, filled with deterministic random files and directories by xdftool."""
 import os, random, shutil, subprocess, sys, tempfile
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from f2p.rdb import make_rdb_disk
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tests'))
+from amidisk.rdb import make_rdb_disk
 
 out = sys.argv[1]
 mb = int(sys.argv[2]) if len(sys.argv) > 2 else 4

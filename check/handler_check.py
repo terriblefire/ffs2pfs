@@ -2,14 +2,14 @@
 """handler_check.py ORIG_FFS_IMAGE CONVERTED_IMAGE [DRIVER]
 List and read every file of the converted image with the real pfs3aio handler
 (AmiFUSE) and compare names, sizes and contents with the original FFS volume
-(read by f2p.ffs)."""
+(read by amidisk.ffs)."""
 import json, os, subprocess, sys, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..'))
-from f2p.blockdev import BlockDev, Part
-from f2p import rdb
-from f2p.ffs import FFS
-from f2p.verify import ffs_paths
+sys.path.insert(0, os.path.join(HERE, '..', 'tests'))
+from amidisk.blockdev import BlockDev, Part
+from amidisk import rdb
+from amidisk.ffs import FFS
+from amidisk.verify import ffs_paths
 
 orig, conv = sys.argv[1], sys.argv[2]
 drv = sys.argv[3] if len(sys.argv) > 3 else 'rdb'          # default: pfs3aio as installed in the RDB

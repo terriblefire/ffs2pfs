@@ -1,9 +1,9 @@
-/* PFS3 metadata from the plan, as pfs3build.py builds it (pfs3aio 19.2 format).
+/* PFS3 metadata from the plan (pfs3aio 19.2 format).
  *
  * pfs3_begin() lays everything out: reserved block numbers, the anode table,
  * the directory block packing, the data bitmap. pfs3_block(i) then produces
- * write #i (one 512-byte sector) on demand, in the same order as the Python
- * builder: the rootblock cluster, then every reserved block in ascending order.
+ * write #i (one 512-byte sector) on demand, in this order: the rootblock
+ * cluster, then every reserved block in ascending order.
  * Nothing is kept per block, so BUILD can resume at any step. */
 #include "f2p.h"
 

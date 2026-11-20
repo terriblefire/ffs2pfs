@@ -4,13 +4,13 @@ A harder FFS test volume (one xdftool process, chained commands): nested and
 big directories, empty files, comments, protection bits, then a quarter of the
 files deleted and the holes refilled so later files are fragmented."""
 import os, random, shutil, subprocess, sys, tempfile
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from f2p.rdb import make_rdb_disk
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tests'))
+from amidisk.rdb import make_rdb_disk
 
 def set_comments(path, comments):
     import struct
-    from f2p.blockdev import BlockDev, Part
-    from f2p.ffs import FFS
+    from amidisk.blockdev import BlockDev, Part
+    from amidisk.ffs import FFS
     dev = BlockDev(path, writable_file=True)
     part = Part(dev, 0, dev.nblocks)
     fs = FFS(part).read()
