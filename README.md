@@ -141,7 +141,11 @@ is now shared with the probe.
 | what the window lists after a rollback was cut off | host build | 280 stopped conversions, each rollback cut off at sampled writes | 3,248 | 0 |
 | rollback and finishing, sampled | Amiga binary under vamos | t4t (torn), k8, l8o (torn) | 130 rollbacks, 16 cut off or failed; 15 resumes, 3 double crashes | 0 |
 
-The window itself has not yet been run on an Amiga (vamos has no Intuition).
+The window on an Amiga (vamos has no Intuition): an A4000 with a 68060 and Kickstart 3.2,
+a 685 MB FFS partition on IDE with 4,790 files. Analyse; Convert stopped in step 3, then
+Roll back (every file, its size, protection bits, date, comment and CRC as before), twice;
+Convert to the end. After a reboot the partition mounts read-write as PFS3, with the
+pfs3aio from its RDB.
 
 ### Version 0.2
 
