@@ -64,6 +64,13 @@ static prow rows[MAXROWS];
 static int nrows, sel = -1;
 static struct List plist;
 
+/* row i, or NULL. Always through here: vbcc -O1 miscompiles "prow *r = &rows[i]" when the
+   first use is r->pp.x (it keeps &rows[i].pp and reads the other fields from there) */
+static prow *row(int i)
+{
+    return i >= 0 && i < nrows ? &rows[i] : NULL;
+}
+
 static void bstr(char *out, BSTR b, int max)
 {
     UBYTE *s = BADDR(b);
@@ -354,7 +361,7 @@ static void put_text(int x, int y, int w, const char *s, int p)
 static void draw_info(void)
 {
     char a[120], b[120], size[16];
-    prow *r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
+    prow *r = row(sel);
     a[0] = b[0] = 0;
     if (!nrows)
         strcpy(a, "No partitions found on a disk with an RDB.");
@@ -367,15 +374,15 @@ static void draw_info(void)
         switch (r->pp.state) {
         case P_NONE:
             strcpy(b, !convertible(r) ? "Not OFS or FFS: nothing to convert."
-                      : !r->boot ? "Analyse checks it, writing nothing. Convert makes it PFS3, keeping every file."
-                      : r->progdir ? "The boot volume: to convert it, copy ffs2pfs to RAM: and start it from there."
-                      : "The boot volume: Convert it, then reboot. Nothing else may use it meanwhile.");
+                      : !r->boot ? "Analyse only reads. Convert makes it PFS3, keeping all files."
+                      : r->progdir ? "The boot volume: copy ffs2pfs to RAM: and start it from there."
+                      : "The boot volume: close what uses it, Convert, then reboot.");
             break;
         case P_PFS3:
             strcpy(b, "PFS3 already: nothing to convert.");
             break;
         case P_STOPPED:
-            sprintf(b, "Stopped at step %lu of 6. Convert carries on; Roll back puts it back as it was.", UL(r->pp.step));
+            sprintf(b, "Stopped at step %lu of 6: Convert goes on, Roll back undoes it.", UL(r->pp.step));
             break;
         case P_UNDO:
             strcpy(b, "A rollback was cut off: Roll back finishes it.");
@@ -384,7 +391,7 @@ static void draw_info(void)
             strcpy(b, "Only the last write is left: Convert finishes it.");
             break;
         default:
-            snprintf(b, sizeof(b), "Cannot be read: %s. Convert or Roll back try again.", r->pp.why);
+            snprintf(b, sizeof(b), "Cannot be read: %s", r->pp.why);
         }
     }
     put_text(r_info.x + 6, r_info.y + 3, r_info.w - 12, a, TEXTPEN);
@@ -464,7 +471,7 @@ static void disable(int g, int off)
 
 static void set_gadgets(void)
 {
-    prow *r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
+    prow *r = row(sel);
     int st = r ? r->pp.state : -1;
     disable(G_ANALYSE, running || !r || !convertible(r));
     disable(G_CONVERT, running || !r || !((convertible(r) && !(r->boot && r->progdir)) || st == P_STOPPED
@@ -579,7 +586,7 @@ static void rescan(void)
 {
     char keep[32];
     int i;
-    strcpy(keep, sel >= 0 && sel < nrows ? rows[sel].name : "");
+    strcpy(keep, row(sel) ? row(sel)->name : "");
     GT_SetGadgetAttrs(gad[G_PARTS], win, NULL, GTLV_Labels, ~0, TAG_END);
     scan();
     GT_SetGadgetAttrs(gad[G_PARTS], win, NULL, GTLV_Labels, (ULONG)&plist, TAG_END);
@@ -591,9 +598,13 @@ static void rescan(void)
 
 static void start(int mode)
 {
-    prow *r = &rows[sel];
+    prow *r = row(sel);
     char t[400];
-    const char *was = fsname(r->pp.orig_dostype), *n = r->name[0] ? r->name : "the partition";
+    const char *was, *n;
+    if (!r)
+        return;
+    was = fsname(r->pp.orig_dostype);
+    n = r->name[0] ? r->name : "the partition";
     if (mode == F2P_CONVERT && convertible(r)) {
         snprintf(t, sizeof(t), "Convert %s:%s%s to PFS3?\n\n"
                  "Every file is kept. If anything goes wrong,\n%s: is put back as it was.\n\n"
@@ -656,11 +667,11 @@ static void start(int mode)
 
 static void finished(void)
 {
-    char t[400], n[40];
-    prow *r = &rows[run_row];
-    const char *was = fsname(r->pp.orig_dostype);
-    int rc = w_rc, boot = r->boot;
-    strcpy(n, r->name[0] ? r->name : "the partition");
+    char t[400], n[40], was[12];
+    prow *r = row(run_row);
+    int rc = w_rc, boot = r && r->boot;
+    strcpy(n, r && r->name[0] ? r->name : "the partition");
+    strcpy(was, r ? fsname(r->pp.orig_dostype) : "FFS");
     fe_log = NULL;
     fe_progress = NULL;
     running = 0;
@@ -672,7 +683,7 @@ static void finished(void)
     step_text[0] = 0;
     draw_progress();
     rescan();                                   /* where it stands now */
-    r = sel >= 0 && sel < nrows ? &rows[sel] : NULL;
+    r = row(sel);
     if (rc == 5 && r && r->pp.state == P_STOPPED)
         snprintf(t, sizeof(t), "Stopped at step %lu of 6.\n\nConvert carries on from there;\nRoll back puts %s: back as it was.",
                  UL(r->pp.step), n);

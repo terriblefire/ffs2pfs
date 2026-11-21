@@ -635,13 +635,14 @@ out:
     CloseLibrary((struct Library *)ExpansionBase);
 }
 
-/* "$VER: name x.y (date)" in a binary, without the "$VER: " */
+/* "$VER: name x.y (date)" in a binary, without the "$VER: ". The search key has no "$" in
+   it here, so that the Version command finds ffs2pfs's own string, not this one */
 static const char *ver_of(const u8 *b, u32 n)
 {
     static char v[80];
     u32 i, j;
     for (i = 0; i + 6 < n; i++)
-        if (!memcmp(b + i, "$VER: ", 6)) {
+        if (b[i] == '$' && !memcmp(b + i + 1, "VER: ", 5)) {
             for (j = 0; j < sizeof(v) - 1 && i + 6 + j < n && b[i + 6 + j] >= ' ' && b[i + 6 + j] != ')'; j++)
                 v[j] = b[i + 6 + j];
             if (i + 6 + j < n && b[i + 6 + j] == ')' && j < sizeof(v) - 1)
