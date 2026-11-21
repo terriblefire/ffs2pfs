@@ -43,11 +43,18 @@ int rdb_find_rdsk(blockdev *d, u32 *blk, u8 *rdsk)
 
 int rdb_partitions(blockdev *d, partinfo *out, int max)
 {
-    u8 r[BS], p[BS];
-    u32 rblk, nxt;
-    int n = 0, guard = 0;
+    u8 r[BS];
+    u32 rblk;
     if (!rdb_find_rdsk(d, &rblk, r))
         return -1;
+    return rdb_partitions_from(d, r, out, max);
+}
+
+int rdb_partitions_from(blockdev *d, const u8 *r, partinfo *out, int max)
+{
+    u8 p[BS];
+    u32 nxt;
+    int n = 0, guard = 0;
     nxt = L(r, 7);
     while (nxt != NOBLK && n < max && guard++ < 1000) {
         partinfo *q = &out[n++];

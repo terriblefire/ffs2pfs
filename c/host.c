@@ -1,6 +1,7 @@
 /* Host front end for tests: an image file as the disk, with crash and error injection.
  *   f2p_host IMAGE [--name P] [--bin PFS3AIO] [--dry] [--rollback] [--crash-after N]
  *            [--torn off|garbage|OFFSET] [--fail-at N[,N...]]
+ *   f2p_host IMAGE --probe      (each partition and where it stands, reading only)
  * --crash-after N: the (N+1)th 512-byte block write is not done (or done torn)
  * and the program exits with status 3, as a power cut would leave it.
  * --fail-at N: block write attempt N (from 0) is not done and returns an error, once.
@@ -72,7 +73,7 @@ static int fd_write(blockdev *d, u32 blk, u32 n, const u8 *buf)
 int main(int argc, char **argv)
 {
     const char *img = NULL, *name = NULL, *binpath = NULL;
-    int mode = F2P_CONVERT, i, fd, r;
+    int mode = F2P_CONVERT, i, fd, r, probe = 0;
     u8 *bin = NULL;
     u32 binlen = 0;
     blockdev d;
@@ -81,6 +82,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--bin") && i + 1 < argc) binpath = argv[++i];
         else if (!strcmp(argv[i], "--dry")) mode = F2P_DRY;
         else if (!strcmp(argv[i], "--rollback")) mode = F2P_ROLLBACK;
+        else if (!strcmp(argv[i], "--probe")) probe = 1;
         else if (!strcmp(argv[i], "--fail-at") && i + 1 < argc) {
             char *p = argv[++i];
             while (*p && nfail < 16) {
@@ -109,13 +111,24 @@ int main(int argc, char **argv)
         if (fread(bin, 1, binlen, f) != binlen) { perror(binpath); return 20; }
         fclose(f);
     }
-    fd = open(img, mode == F2P_DRY ? O_RDONLY : O_RDWR);
+    fd = open(img, mode == F2P_DRY || probe ? O_RDONLY : O_RDWR);
     if (fd < 0) { perror(img); return 20; }
     d.ctx = &fd;
     d.nblocks = (u32)(lseek(fd, 0, SEEK_END) / BS);
     d.read = fd_read;
     d.write = fd_write;
     d.flush = NULL;                /* writes go straight to the file, in order */
+    if (probe) {                   /* one line per partition: name state step DosType-before */
+        static const char *st[] = { "none", "pfs3", "stopped", "undo", "finish", "bad" };
+        f2p_part pp[32];
+        int n = f2p_probe(&d, 1, pp, 32);
+        if (n < 0) { printf("no RDSK\n"); return 10; }
+        for (i = 0; i < n; i++)
+            printf("%s %s %lu %08lx%s%s\n", pp[i].p.invalid ? "?" : pp[i].p.name, st[pp[i].state], UL(pp[i].step),
+                   UL(pp[i].orig_dostype), pp[i].why[0] ? " " : "", pp[i].why);
+        close(fd);
+        return 0;
+    }
     r = f2p_run(&d, name, bin, binlen, mode);
     if (r)
         fprintf(stderr, "ffs2pfs: %s%s\n", f2p_error, r == E_ROLLEDBACK ? " (the volume is as it was)" : "");

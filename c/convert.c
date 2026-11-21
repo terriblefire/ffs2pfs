@@ -1058,6 +1058,28 @@ static int in_progress(conv *c)
     return s != S_FFS && s != S_PFS3;             /* -1 too: its error shows when it is worked on */
 }
 
+/* a torn PART block: the partition, found by its mark at a cylinder start (reads only) */
+static int find_by_mark(conv *c, const u8 *r)
+{
+    u32 cyl, cb = L(r, 36);
+    for (cyl = L(r, 34); cyl <= L(r, 35); cyl++) {
+        u8 b0[BS], b1[BS];
+        anchor A, B;
+        int a, bb;
+        if (c->d->read(c->d, cyl * cb, 1, b0) || c->d->read(c->d, cyl * cb + 1, 1, b1))
+            continue;
+        a = read_mark(b0, &A) && A.part_start == cyl * cb;
+        bb = read_mark(b1, &B) && B.part_start == cyl * cb;
+        if (a || bb) {
+            anchor *x = a ? &A : &B;
+            memset(&c->p, 0, sizeof(c->p));
+            c->p.block = x->partblock; c->p.start = cyl * cb; c->p.blocks = x->part_blocks; c->p.invalid = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* the partition to work on: one in progress, else the named one */
 static int discover(conv *c, const char *name)
 {
@@ -1075,23 +1097,8 @@ static int discover(conv *c, const char *name)
     n = rdb_partitions(c->d, parts, 32);
     for (i = 0; i < n; i++) {
         if (parts[i].invalid) {
-            /* a torn PART block: find the partition by its mark at a cylinder start */
-            u32 cyl, cb = L(r, 36);
-            for (cyl = L(r, 34); cyl <= L(r, 35); cyl++) {
-                u8 b0[BS], b1[BS];
-                anchor A, B;
-                int a, bb;
-                if (c->d->read(c->d, cyl * cb, 1, b0) || c->d->read(c->d, cyl * cb + 1, 1, b1))
-                    continue;
-                a = read_mark(b0, &A) && A.part_start == cyl * cb;
-                bb = read_mark(b1, &B) && B.part_start == cyl * cb;
-                if (a || bb) {
-                    anchor *x = a ? &A : &B;
-                    memset(&c->p, 0, sizeof(c->p));
-                    c->p.block = x->partblock; c->p.start = cyl * cb; c->p.blocks = x->part_blocks; c->p.invalid = 1;
-                    return load_partition(c);
-                }
-            }
+            if (find_by_mark(c, r))
+                return load_partition(c);
             continue;
         }
         c->p = parts[i];
@@ -1306,4 +1313,76 @@ int f2p_run(blockdev *d, const char *name, const u8 *bin, u32 binlen, int mode)
 fail:
     model_free(&c.m);
     return 1;
+}
+
+/* ------------------------------------------------------------------ probe (front ends) */
+int f2p_probe(blockdev *d, int rescue, f2p_part *out, int max)
+{
+    conv c;
+    u8 r[BS], jA[BS], jB[BS];
+    u32 rblk, ph, p2, nx, cr, sA, sB;
+    partinfo parts[32];
+    int n, i, k = 0;
+    if (!rdb_find_rdsk(d, &rblk, r) && (!rescue || !rdbfs_find_rescue(d, &rblk, r)))
+        return -1;
+    n = rdb_partitions_from(d, r, parts, 32);
+    for (i = 0; i < n && k < max; i++) {
+        f2p_part *o = &out[k++];
+        memset(o, 0, sizeof(*o));
+        memset(&c, 0, sizeof(c));
+        c.d = d;
+        c.p = parts[i];
+        if (parts[i].invalid && !find_by_mark(&c, r)) {
+            strcpy(o->why, "its PART block is damaged");
+            o->state = P_BAD;
+            o->p = parts[i];
+            continue;
+        }
+        o->p = c.p;                               /* a torn PART block: as its mark says, no name */
+        o->orig_dostype = c.p.dostype;
+        if (load_partition(&c)) {
+            memcpy(o->why, f2p_error, sizeof(o->why) - 1);     /* o is zeroed: the last byte stays 0 */
+            o->state = P_BAD;
+            continue;
+        }
+        if (c.m0 || c.m1)
+            o->orig_dostype = (c.m0 ? c.A0 : c.A1).orig_dostype;
+        switch (state(&c, &c.a)) {
+        case S_FFS:
+            o->state = P_NONE;
+            o->orig_dostype = c.p.dostype;
+            break;
+        case S_PFS3:
+            o->state = P_PFS3;
+            break;
+        case S_BOOTFIX:
+            o->state = P_FINISH;
+            break;
+        case S_UNDOFIX:
+            o->state = P_UNDO;
+            break;
+        case S_LOCKED:
+            ph = p2 = sA = sB = 0;
+            if (!pread(&c, c.a.jA, jA))
+                sA = rd_journal(&c, jA, &ph, &nx, &cr);
+            if (!pread(&c, c.a.jB, jB))
+                sB = rd_journal(&c, jB, &p2, &nx, &cr);
+            if (sB > sA)
+                ph = p2;
+            if (!sA && !sB) {
+                strcpy(o->why, "both journal copies are bad");
+                o->state = P_BAD;
+            } else if (ph == PH_ROLLBACK)
+                o->state = P_UNDO;
+            else {
+                o->state = P_STOPPED;
+                o->step = ph >= PH_RELOCATE && ph <= PH_RDBFS ? ph + 2 : 6;
+            }
+            break;
+        default:
+            memcpy(o->why, f2p_error, sizeof(o->why) - 1);
+            o->state = P_BAD;
+        }
+    }
+    return k;
 }
