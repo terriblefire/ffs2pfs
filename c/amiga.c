@@ -1,4 +1,5 @@
-/* ffs2pfs for AmigaOS: the CLI front end.
+/* ffs2pfs for AmigaOS: the Shell front end. With no arguments, or from
+ * Workbench, it opens its window instead (gui.c).
  *
  *   ffs2pfs DH1: [ANALYSE] [ROLLBACK] [PFS3AIO=file] [DEVICE=scsi.device UNIT=n] [NOREMOUNT]
  *
@@ -29,18 +30,26 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "f2p.h"
+#include "amiga.h"
 
-static const char version[] = "$VER: ffs2pfs 0.2 (19.11.2026)";
+static const char version[] = "$VER: ffs2pfs 0.3 (20.11.2026)";
 extern const unsigned char pfs3aio_bin[];          /* pfs3aio_bin.c: ref/pfs3aio, made by the Makefile */
 extern const unsigned long pfs3aio_len;
 size_t __stack = 65536;                  /* the vbcc startup code gives us this much */
 
-#define TEMPLATE "PARTITION/A,ANALYSE=DRY/S,ROLLBACK/S,PFS3AIO/K,DEVICE/K,UNIT/K/N,NOREMOUNT/S,LOG/K,BOOT/S,IMAGE/K," \
+#define TEMPLATE "PARTITION,ANALYSE=DRY/S,ROLLBACK/S,PFS3AIO/K,DEVICE/K,UNIT/K/N,NOREMOUNT/S,LOG/K,BOOT/S,IMAGE/K," \
                  "CRASHAFTER/K/N,TORN/K,FAILAT/K"
 enum { A_PART, A_DRY, A_ROLLBACK, A_BIN, A_DEV, A_UNIT, A_NOREMOUNT, A_LOG, A_BOOT, A_IMAGE, A_CRASH, A_TORN, A_FAILAT, A_N };
 
 struct ExpansionBase *ExpansionBase;
+void (*fe_log)(const char *text);
+void (*fe_progress)(const char *step, u32 done, u32 total, const char *item);
+char run_why[200];
+
+const char *ffs2pfs_version(void)
+{
+    return version + 6;
+}
 
 /* ------------------------------------------------------------------ core hooks */
 static BPTR logfile;                     /* LOG=: a copy of the messages */
@@ -121,6 +130,7 @@ static void wd_entry(void)
 static void wd_start(const char *logname)
 {
     main_task = FindTask(NULL);
+    wd_quit = 0;
     if (!logname)
         return;
     strncpy(wd_logname, logname, sizeof(wd_logname) - 1);
@@ -144,6 +154,14 @@ void f2p_log(const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    if (fe_log) {                        /* the window */
+        fe_log(buf);
+        if (logfile) {
+            Write(logfile, buf, strlen(buf));
+            Flush(logfile);
+        }
+        return;
+    }
     if (prog.active) {                   /* finish the progress line first */
         out("\n", 0);
         prog.active = 0;
@@ -156,6 +174,10 @@ void f2p_progress(const char *step, u32 done, u32 total, const char *item)
     char line[160], eta[24] = "";
     unsigned long long now = ticks();
     int force = 0, pct = total ? (int)((unsigned long long)done * 100 / total) : 0;
+    if (fe_progress) {                   /* the window */
+        fe_progress(step, done, total, item);
+        return;
+    }
     if (step != prog.step) {
         if (prog.active)
             out("\n", 0);
@@ -202,16 +224,6 @@ void f2p_free(void *p) { FreeVec(p); }
 int f2p_break(void) { return (SetSignal(0, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) != 0; }
 
 /* ------------------------------------------------------------------ the disk */
-typedef struct {
-    struct MsgPort *port, *tport;
-    struct IOExtTD *io;
-    struct timerequest *tr;
-    int open, topen;
-    int mode;                            /* 0: 32-bit offsets, 1: TD64, 2: NSD */
-    u8 *buf;                             /* XFER sectors, of the partition's BufMemType */
-    u32 maxsec;                          /* sectors per transfer (MaxTransfer, at most XFER) */
-    int noupdate;
-} disk;
 
 /* one I/O request, with a watchdog: a request that takes more than 5 s is
    reported on the console every 5 s (a hung or very slow drive is then visible) */
@@ -317,7 +329,16 @@ static int d_flush(blockdev *d)
     return 0;
 }
 
-static void disk_close(disk *k)
+void disk_blockdev(disk *k, blockdev *d)
+{
+    d->ctx = k;
+    d->nblocks = 0xffffffffUL;
+    d->read = d_read;
+    d->write = d_write;
+    d->flush = d_flush;
+}
+
+void disk_close(disk *k)
 {
     if (k->topen)
         CloseDevice((struct IORequest *)k->tr);
@@ -335,7 +356,7 @@ static void disk_close(disk *k)
         FreeMem(k->buf, XFER * BS);
 }
 
-static int disk_open(disk *k, const char *dev, u32 unit, u32 flags, u32 memtype, u32 maxtransfer)
+int disk_open(disk *k, const char *dev, u32 unit, u32 flags, u32 memtype, u32 maxtransfer)
 {
     memset(k, 0, sizeof(*k));
     k->maxsec = maxtransfer / BS;
@@ -647,59 +668,58 @@ static int rc_of(int r)
     return !r ? 0 : r == E_STOP ? 5 : r == E_ROLLEDBACK ? 10 : 20;
 }
 
-int main(void)
+/* a run that cannot start: the message, kept for the window too */
+static void why(const char *fmt, ...)
 {
-    LONG args[A_N];
-    struct RDArgs *rda;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(run_why, sizeof(run_why), fmt, ap);
+    va_end(ap);
+    f2p_log("%s\n", run_why);
+}
+
+int ffs2pfs_run(const runopts *o)
+{
     target t;
     disk k;
     blockdev d;
     u8 *loaded = NULL, rdsk[BS];
     const u8 *bin = pfs3aio_bin;
     u32 binlen = (u32)pfs3aio_len, rblk;
-    int r = 20, inhibited = 0, len, bootvol = 0, mode;
-    memset(args, 0, sizeof(args));
+    int r = 20, inhibited = 0, len, bootvol = 0, mode = o->mode;
     memset(&t, 0, sizeof(t));
     memset(&k, 0, sizeof(k));
-    rda = ReadArgs((STRPTR)TEMPLATE, args, NULL);
-    if (!rda) {
-        PrintFault(IoErr(), (STRPTR)"ffs2pfs");
-        return 20;
-    }
-    prog.interactive = IsInteractive(Output()) ? 1 : 0;
-    mode = args[A_ROLLBACK] ? F2P_ROLLBACK : args[A_DRY] ? F2P_DRY : F2P_CONVERT;
-    if (args[A_ROLLBACK] && args[A_DRY]) {
-        PutStr((STRPTR)"ffs2pfs: ANALYSE and ROLLBACK do not go together\n");
-        FreeArgs(rda);
-        return 20;
-    }
-    if (args[A_LOG] && (logfile = Open((STRPTR)args[A_LOG], MODE_READWRITE)))
+    run_why[0] = 0;
+    prog.step = NULL;
+    prog.active = 0;
+    if (o->log && (logfile = Open((STRPTR)o->log, MODE_READWRITE)))
         Seek(logfile, 0, OFFSET_END);   /* resumed runs add to the same log */
-    len = strlen((char *)args[A_PART]);
-    strncpy(t.partname, (char *)args[A_PART], sizeof(t.partname) - 1);
+    len = strlen(o->part);
+    strncpy(t.partname, o->part, sizeof(t.partname) - 1);
     if (len && t.partname[len - 1] == ':')
         t.partname[len - 1] = 0;
     snprintf(t.dosname, sizeof(t.dosname), "%s:", t.partname);
-    if (args[A_BIN]) {                         /* another pfs3aio than the one built in */
-        if (!(loaded = load_file((char *)args[A_BIN], &binlen))) {
-            f2p_log("cannot read %s (the pfs3aio handler that goes into the RDB)\n", (char *)args[A_BIN]);
+    if (o->bin) {                              /* another pfs3aio than the one built in */
+        if (!(loaded = load_file(o->bin, &binlen))) {
+            why("cannot read %s (the pfs3aio handler that goes into the RDB)", o->bin);
             goto out;
         }
         bin = loaded;
     }
     if (mode != F2P_ROLLBACK)
-        f2p_log("pfs3aio for the RDB: %s (%s)\n", ver_of(bin, binlen), loaded ? (char *)args[A_BIN] : "built in");
-    if (args[A_IMAGE]) {
+        f2p_log("pfs3aio for the RDB: %s (%s)\n", ver_of(bin, binlen), loaded ? o->bin : "built in");
+    if (o->image) {
         LONG size;
-        if (!(imgfh = Open((STRPTR)args[A_IMAGE], MODE_OLDFILE))) {
-            f2p_log("cannot open %s\n", (char *)args[A_IMAGE]);
+        if (!(imgfh = Open((STRPTR)o->image, MODE_OLDFILE))) {
+            why("cannot open %s", o->image);
             goto out;
         }
         Seek(imgfh, 0, OFFSET_END);
         size = Seek(imgfh, 0, OFFSET_BEGINNING);
-        crash_after = args[A_CRASH] ? *(LONG *)args[A_CRASH] : -1;
-        if (args[A_FAILAT]) {
-            char *p = (char *)args[A_FAILAT];
+        crash_after = o->crash_after;
+        img_writes = img_attempts = 0;
+        if (o->failat) {
+            char *p = (char *)o->failat;
             int f;
             for (f = 0; f < 4 && *p; f++) {
                 fail_at[f] = strtol(p, &p, 10);
@@ -707,39 +727,41 @@ int main(void)
                     p++;
             }
         }
-        torn_mode = !args[A_TORN] ? 0 : !strcmp((char *)args[A_TORN], "garbage") ? -1 : atoi((char *)args[A_TORN]);
+        torn_mode = !o->torn ? 0 : !strcmp(o->torn, "garbage") ? -1 : atoi(o->torn);
         d.ctx = NULL;
         d.nblocks = (u32)(size / BS);
         d.read = img_read;
         d.write = img_write;
         d.flush = NULL;
-        f2p_log("%s: image %s, %lu blocks\n", t.partname, (char *)args[A_IMAGE], UL(d.nblocks));
+        f2p_log("%s: image %s, %lu blocks\n", t.partname, o->image, UL(d.nblocks));
         r = f2p_run(&d, t.partname, bin, binlen, mode);
+        if (r)
+            strncpy(run_why, r == E_STOP ? "stopped" : f2p_error, sizeof(run_why) - 1);
         report(&t, r);
         f2p_log("block writes: %ld\n", img_writes);
         r = rc_of(r);
         goto out;
     }
-    if (!find_dos_device(&t) && !args[A_DEV]) {
-        f2p_log("%s is not mounted: give DEVICE and UNIT\n", t.dosname);
+    if (!find_dos_device(&t) && !o->device) {
+        why("%s is not mounted: give DEVICE and UNIT", t.dosname);
         goto out;
     }
-    if (args[A_DEV]) {                         /* the disk named directly (after a crash nothing mounts it) */
-        strncpy(t.device, (char *)args[A_DEV], sizeof(t.device) - 1);
-        t.unit = args[A_UNIT] ? *(LONG *)args[A_UNIT] : 0;
+    if (o->device) {                           /* the disk named directly (after a crash nothing mounts it) */
+        strncpy(t.device, o->device, sizeof(t.device) - 1);
+        t.unit = o->unit;
         if (!t.mounted) {
             t.memtype = MEMF_PUBLIC;
             t.maxtransfer = 0x1fe00;              /* the usual RDB value; 64 KB per request is used */
         }
     }
     if (t.mounted && is_boot_volume(&t)) {
-        if (!args[A_BOOT]) {
-            f2p_log("%s is the boot volume. To convert it while running from it, copy ffs2pfs\n"
-                    "to RAM:, run it from there with BOOT, and reboot when it is done.\n", t.dosname);
+        if (!o->boot) {
+            why("%s is the boot volume. To convert it while running from it, copy ffs2pfs\n"
+                "to RAM:, run it from there with BOOT, and reboot when it is done.", t.dosname);
             goto out;
         }
-        if (progdir_on_target(&t) || (args[A_LOG] && on_target(&t, (char *)args[A_LOG]))) {
-            f2p_log("BOOT: run ffs2pfs from RAM:, and put the LOG on another volume (nothing may need %s)\n", t.dosname);
+        if (progdir_on_target(&t) || (o->log && on_target(&t, o->log))) {
+            why("BOOT: run ffs2pfs from RAM:, and put the LOG on another volume (nothing may need %s)", t.dosname);
             goto out;
         }
         bootvol = 1;
@@ -747,19 +769,15 @@ int main(void)
                 "reboot when it is done\n", t.dosname);
     }
     if (disk_open(&k, t.device, t.unit, t.flags, t.memtype, t.maxtransfer)) {
-        f2p_log("ffs2pfs: %s\n", f2p_error);
+        why("ffs2pfs: %s", f2p_error);
         goto out;
     }
-    d.ctx = &k;
-    d.nblocks = 0xffffffffUL;
-    d.read = d_read;
-    d.write = d_write;
-    d.flush = d_flush;
+    disk_blockdev(&k, &d);
     if (rdb_find_rdsk(&d, &rblk, rdsk))
         d.nblocks = L(rdsk, 16) * L(rdsk, 17) * L(rdsk, 18);
     if (t.mounted) {
         if (!Inhibit((STRPTR)t.dosname, DOSTRUE)) {
-            f2p_log("cannot inhibit %s: close everything that uses it\n", t.dosname);
+            why("cannot inhibit %s: close everything that uses it", t.dosname);
             goto out;
         }
         inhibited = 1;
@@ -771,10 +789,13 @@ int main(void)
     }
     f2p_log("%s %s unit %lu, %lu KB transfers, 32-bit commands below 4 GB, %s above\n", t.dosname, t.device, UL(t.unit),
             UL(k.maxsec / 2), k.mode == 2 ? "NSD" : k.mode == 1 ? "TD64" : "none");
-    wd_start((const char *)args[A_LOG]);
+    wd_start(o->log);
     if (mode == F2P_CONVERT)
-        f2p_log("Ctrl-C stops safely at any time; run the same command again to carry on, or with ROLLBACK to undo it.\n");
+        f2p_log(fe_log ? "Stop stops safely at any time; Convert carries on from there, or Roll back undoes it.\n"
+                       : "Ctrl-C stops safely at any time; run the same command again to carry on, or with ROLLBACK to undo it.\n");
     r = f2p_run(&d, t.partname, bin, binlen, mode);
+    if (r)
+        strncpy(run_why, r == E_STOP ? "stopped" : f2p_error, sizeof(run_why) - 1);
     report(&t, r);
     if (inhibited && (r == E_ROLLEDBACK || (mode == F2P_ROLLBACK && !r))) {
         Inhibit((STRPTR)t.dosname, DOSFALSE);  /* FFS again, as it was: give it back */
@@ -783,10 +804,10 @@ int main(void)
         f2p_log("reboot to mount %s again\n", t.dosname);
     if (mode == F2P_ROLLBACK || r == E_ROLLEDBACK)
         ;
-    else if (!r && !args[A_DRY] && bootvol) {
+    else if (!r && mode != F2P_DRY && bootvol) {
         f2p_log("%s is PFS3 now. Reboot: the boot ROM loads pfs3aio from the RDB and boots from it.\n", t.dosname);
         inhibited = 0;                         /* leave it inhibited until the reboot */
-    } else if (!r && !args[A_DRY] && t.mounted && !args[A_NOREMOUNT]) {
+    } else if (!r && mode != F2P_DRY && t.mounted && !o->noremount) {
         remount(&t, &d, bin, binlen);
         inhibited = 0;                         /* the FFS entry is gone; never uninhibit it */
     }
@@ -795,15 +816,67 @@ int main(void)
     f2p_log("free memory at the end: %lu KB\n", UL(AvailMem(MEMF_ANY) / 1024));
 out:
     wd_stop();
-    if (inhibited && args[A_DRY])
+    if (inhibited && mode == F2P_DRY)
         Inhibit((STRPTR)t.dosname, DOSFALSE);  /* analyse only: give the volume back */
     disk_close(&k);
-    if (imgfh)
+    if (imgfh) {
         Close(imgfh);
+        imgfh = 0;
+    }
     if (loaded)
         FreeVec(loaded);
-    if (logfile)
+    if (logfile) {
         Close(logfile);
+        logfile = 0;
+    }
+    return r;
+}
+
+int main(int argc, char **argv)
+{
+    LONG args[A_N];
+    struct RDArgs *rda;
+    runopts o;
+    int r, i, any = 0;
+    if (argc == 0)                             /* started from Workbench */
+        return gui_main();
+    memset(args, 0, sizeof(args));
+    rda = ReadArgs((STRPTR)TEMPLATE, args, NULL);
+    if (!rda) {
+        PrintFault(IoErr(), (STRPTR)"ffs2pfs");
+        return 20;
+    }
+    for (i = 0; i < A_N; i++)
+        any |= args[i] != 0;
+    if (!any) {                                /* no arguments: the window */
+        FreeArgs(rda);
+        if ((r = gui_main()))
+            PutStr((STRPTR)"ffs2pfs: cannot open its window (it needs Kickstart 2.04 and a 640x256 screen)\n"
+                           "In the Shell: ffs2pfs PARTITION [ANALYSE] [ROLLBACK] ... (ffs2pfs ? lists them)\n");
+        return r;
+    }
+    if (!args[A_PART] || (args[A_ROLLBACK] && args[A_DRY])) {
+        PutStr((STRPTR)(!args[A_PART] ? "ffs2pfs: which partition? For example: ffs2pfs DH1: ANALYSE\n"
+                                        "(with no arguments ffs2pfs opens its window)\n"
+                                      : "ffs2pfs: ANALYSE and ROLLBACK do not go together\n"));
+        FreeArgs(rda);
+        return 20;
+    }
+    prog.interactive = IsInteractive(Output()) ? 1 : 0;
+    memset(&o, 0, sizeof(o));
+    o.part = (const char *)args[A_PART];
+    o.mode = args[A_ROLLBACK] ? F2P_ROLLBACK : args[A_DRY] ? F2P_DRY : F2P_CONVERT;
+    o.bin = (const char *)args[A_BIN];
+    o.device = (const char *)args[A_DEV];
+    o.unit = args[A_UNIT] ? (u32)*(LONG *)args[A_UNIT] : 0;
+    o.noremount = args[A_NOREMOUNT] != 0;
+    o.log = (const char *)args[A_LOG];
+    o.boot = args[A_BOOT] != 0;
+    o.image = (const char *)args[A_IMAGE];
+    o.torn = (const char *)args[A_TORN];
+    o.failat = (const char *)args[A_FAILAT];
+    o.crash_after = args[A_CRASH] ? *(LONG *)args[A_CRASH] : -1;
+    r = ffs2pfs_run(&o);
     FreeArgs(rda);
-    return r ? r : version[0] == '$' ? 0 : 0;
+    return r;
 }

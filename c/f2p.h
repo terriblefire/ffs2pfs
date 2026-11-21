@@ -76,6 +76,7 @@ int rdb_checksum(u8 *b);                       /* set the checksum, returns 0 */
 int rdb_valid(const u8 *b);
 int rdb_find_rdsk(blockdev *d, u32 *blk, u8 *rdsk);   /* 1 = found a valid RDSK */
 int rdb_partitions(blockdev *d, partinfo *out, int max);   /* count, or -1 */
+int rdb_partitions_from(blockdev *d, const u8 *rdsk, partinfo *out, int max);   /* the list of this RDSK */
 
 /* pfs3aio into the RDB */
 typedef struct {
@@ -168,5 +169,22 @@ int softlink_block(const model *m, const entry *e, u32 *blk, u8 *out);
 /* convert.c */
 enum { F2P_CONVERT, F2P_DRY, F2P_ROLLBACK };
 int f2p_run(blockdev *d, const char *name, const u8 *bin, u32 binlen, int mode);
+
+/* where each partition of a disk stands, reading only (for a front end's list).
+   P_NONE: no conversion on it (OFS, FFS, or any other file system: see p.dostype).
+   P_STOPPED: cut off at step `step` (3..6 of 6): ffs2pfs carries on, or ROLLBACK.
+   P_UNDO: a rollback was cut off: ROLLBACK (or ffs2pfs) finishes it.
+   P_FINISH: past the point of no return, only the last write left: ffs2pfs finishes it.
+   P_BAD: the partition or its marks cannot be read (f2p_error). */
+enum { P_NONE, P_PFS3, P_STOPPED, P_UNDO, P_FINISH, P_BAD };
+typedef struct {
+    partinfo p;
+    int state;
+    u32 step;
+    u32 orig_dostype;              /* the DosType before the conversion (p.dostype is the RDB's now) */
+    char why[80];                  /* P_BAD: what could not be read */
+} f2p_part;
+/* rescue: a torn RDSK block is read from its rescue copy (a search of up to 32 MB) */
+int f2p_probe(blockdev *d, int rescue, f2p_part *out, int max);   /* count, or -1: no valid RDSK */
 
 #endif

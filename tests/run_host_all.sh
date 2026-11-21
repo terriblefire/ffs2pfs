@@ -1,7 +1,8 @@
 #!/bin/sh
 # Every host test of the C tool (c/f2p_host) at every write point, on every test
-# image, with clean and torn (garbage) writes: rollback (rollback_c.py) and
-# resume after a crash (crash_c.py, crash_c2.py with the expected file tree).
+# image, with clean and torn (garbage) writes: rollback (rollback_c.py), resume
+# after a crash (crash_c.py, crash_c2.py with the expected file tree), and the
+# state the window lists (probe_c.py).
 # Runs JOBS at once (default 8); per-test logs in tests/out/, the summary in
 # tests/host_all.log. Run from the repo root, e.g. in Docker:
 #   docker run --rm -v $PWD:/w -w /w tftools-hosttest sh tests/run_host_all.sh
@@ -16,6 +17,9 @@ mkdir -p tests/out
     for i in k8 k8o; do
       echo "rb_$i${t:+_$t}|python3 tests/rollback_c.py tests/$i.img tests/${i}_ffs.json${t:+ --torn=$t}"
       echo "fw_$i${t:+_$t}|python3 tests/crash_c2.py tests/$i.img tests/${i}_ffs.json 100${t:+ --torn=$t}"
+    done
+    for i in t4t l8o l8f h16 o8 k8 k8o; do
+      echo "pr_$i${t:+_$t}|python3 tests/probe_c.py tests/$i.img${t:+ --torn=$t}"
     done
   done
 } > tests/out/jobs.txt

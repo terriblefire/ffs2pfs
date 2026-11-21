@@ -11,14 +11,49 @@ FFS volume it was.
 - Every step is journalled on the disk itself. A conversion that was cut off is found
   again from the disk alone and carries on from where it stopped.
 - If anything fails, the volume is rolled back to FFS, exactly as it was.
+- A window (Workbench, or `ffs2pfs` with no arguments) or the Shell.
 
 The latest build is the `ffs2pfs` file of the [vLATEST release](https://github.com/terriblefire/ffs2pfs/releases/tag/vLATEST),
 made by GitHub Actions from every push to main. Copy it to C: (or anywhere) on the Amiga.
+To start it from Workbench, give it a tool icon, or use Show > All Files.
 
-## Usage
+## The window
+
+Started from Workbench, or as `ffs2pfs` with no arguments in the Shell, ffs2pfs opens a
+window (Kickstart 2.04 and up). It lists the partitions of every disk with an RDB, and
+where each one stands:
+
+| state | what it means |
+|---|---|
+| can be converted | OFS or FFS, not the boot volume |
+| boot volume | OFS or FFS, the boot volume |
+| stopped at step n/6 | a conversion was cut off (power cut, Stop) |
+| rollback cut off | a rollback was cut off |
+| last write left | past the point of no return: Convert finishes it |
+| (empty), type PFS3 | PFS3 already: nothing to do |
+| not OFS/FFS | another file system: nothing to do |
+
+Pick a partition, then:
+
+| button | what it does |
+|---|---|
+| Analyse | checks the volume and the free space it needs, writes nothing (as `ANALYSE`) |
+| Convert | converts it, or carries on with a conversion that was cut off |
+| Roll back | puts a conversion that was cut off back to FFS (as `ROLLBACK`) |
+| Stop | stops at the next safe point (as Ctrl-C in the Shell) |
+| Save log... | the messages into a file |
+
+Convert and Roll back ask first. The run shows its step (n of 6), a progress bar with
+the time left, and the messages. To list the partitions the window only reads: the RDB
+and blocks 0 and 1 of each partition, and the journal of a conversion that was cut off.
+Disks with no partition in the DOS list are not shown: use the Shell with `DEVICE` and
+`UNIT` for them. To convert the boot volume, copy ffs2pfs to RAM: and start it from there.
+Keys: cursor up and down pick a partition, A, C, R, S and L as underlined, Esc closes.
+
+## In the Shell
 
 ```
-ffs2pfs PARTITION/A [ANALYSE] [ROLLBACK] [PFS3AIO=file] [DEVICE=name UNIT=n] [NOREMOUNT] [LOG=file] [BOOT]
+ffs2pfs PARTITION [ANALYSE] [ROLLBACK] [PFS3AIO=file] [DEVICE=name UNIT=n] [NOREMOUNT] [LOG=file] [BOOT]
 ```
 
 | command | what it does |
@@ -63,11 +98,12 @@ and running ffs2pfs again finishes it.
 The Amiga binary needs vbcc and the NDK 3.2; the host build (for the tests) needs gcc:
 
 ```
-make -C c ffs2pfs NDK32=/path/to/NDK3.2   # c/ffs2pfs: the AmigaOS binary, with ref/pfs3aio built in
+make -C c ffs2pfs NDK32=/path/to/NDK3.2   # c/ffs2pfs: the AmigaOS binary (Shell and window), with ref/pfs3aio built in
 make -C c f2p_host                         # c/f2p_host: the same converter on a disk image file
 ```
 
-`c/` is the converter. `tests/` holds the test harnesses (Python) and `tests/amidisk/`,
+`c/` is the converter: the core (no AmigaOS calls), `amiga.c` (the Shell), `gui.c` (the
+window, GadTools) and `host.c` (for the tests). `tests/` holds the test harnesses (Python) and `tests/amidisk/`,
 the readers they check images with (RDB, FFS, PFS3). `check/` reads converted images
 with the real pfs3aio handler (through AmiFUSE). `tools/amiga/crcwalk.c` lists the CRC
 of every file on a volume, for comparing a disk before and after on real hardware.
@@ -83,7 +119,22 @@ torn (half old, half new, or garbage), then runs it again: to roll back, or to f
   must equal the FFS original, and the RDB must hold pfs3aio. On k8 and k8o some
   rolled-back images are also converted again and checked the same way.
 
-### Version 0.2 (this code)
+### Version 0.3 (this code)
+
+0.3 adds the window and what it lists the partitions with (`f2p_probe`, reads only).
+The conversion is the 0.2 code; the search for a partition whose PART block was torn
+is now shared with the probe.
+
+| test | build | write points | cases | failures |
+|---|---|---|---|---|
+| rollback, automatic rollback, finishing after a power cut (the host suite of 0.2, below) | host build | every write of all 7 images, clean and torn | 85,536 rollbacks, 2,800 cut off or failed; 42,768 resumes, 1,400 double crashes | 0 |
+| what the window lists after a conversion was cut off: the state only goes forward, a stopped one is at the step it logged, the probe writes nothing | host build | every write of all 7 images, clean and torn | 42,768 | 0 |
+| what the window lists after a rollback was cut off | host build | 280 stopped conversions, each rollback cut off at sampled writes | 3,248 | 0 |
+| rollback and finishing, sampled | Amiga binary under vamos | t4t (torn), k8, l8o (torn) | 130 rollbacks, 16 cut off or failed; 15 resumes, 3 double crashes | 0 |
+
+The window itself has not yet been run on an Amiga (vamos has no Intuition).
+
+### Version 0.2
 
 | test | build | write points | cases | failures |
 |---|---|---|---|---|
