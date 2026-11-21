@@ -27,6 +27,7 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/expansion.h>
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -470,6 +471,7 @@ typedef struct {
     char device[64];
     u32 unit, flags, memtype, maxtransfer;
     int mounted;
+    struct MsgPort *task;                /* its handler, if it runs */
 } target;
 
 static void bstrcpy(char *out, BSTR b, int max)
@@ -496,6 +498,7 @@ static int find_dos_device(target *t)
             t->memtype = env->de_TableSize >= DE_MEMBUFTYPE ? env->de_BufMemType : MEMF_PUBLIC;
             t->maxtransfer = env->de_TableSize >= DE_MAXTRANSFER ? env->de_MaxTransfer : 0x1fe00;
             t->mounted = 1;
+            t->task = dl->dol_Task;
             ok = 1;
         }
     }
@@ -503,10 +506,54 @@ static int find_dos_device(target *t)
     return ok;
 }
 
+#ifndef ID_BUSY
+#define ID_BUSY 0x42555359UL                /* 'BUSY': what a handler reports while it is inhibited */
+#endif
+
+/* is the target's handler inhibited already? */
+static int is_busy(const target *t)
+{
+    struct InfoData *id;
+    int busy = 0;
+    if (!t->task || !(id = AllocVec(sizeof(*id), MEMF_PUBLIC | MEMF_CLEAR)))
+        return 0;
+    if (DoPkt(t->task, ACTION_DISK_INFO, MKBADDR(id), 0, 0, 0, 0))
+        busy = (u32)id->id_DiskType == ID_BUSY;
+    FreeVec(id);
+    return busy;
+}
+
+/* where the partition stands on the disk (P_NONE ...), or -1: not found */
+static int part_state(blockdev *d, const char *name)
+{
+    static f2p_part pp[32];
+    int n = f2p_probe(d, 1, pp, 32), i, j;
+    for (i = 0; i < n; i++) {
+        for (j = 0; pp[i].p.name[j] && name[j] && toupper((UBYTE)pp[i].p.name[j]) == toupper((UBYTE)name[j]); j++)
+            ;
+        if (!pp[i].p.invalid && !pp[i].p.name[j] && !name[j])
+            return pp[i].state;
+    }
+    return -1;
+}
+
+/* a lock with no requester: a volume that a stopped run left inhibited answers
+   "not a DOS disk", and that is no question for the user */
+static BPTR quiet_lock(const char *name)
+{
+    struct Process *me = (struct Process *)FindTask(NULL);
+    APTR old = me->pr_WindowPtr;
+    BPTR l;
+    me->pr_WindowPtr = (APTR)-1;
+    l = Lock((STRPTR)name, SHARED_LOCK);
+    me->pr_WindowPtr = old;
+    return l;
+}
+
 /* is `path` on the same volume as the target? */
 static int on_target(const target *t, const char *path)
 {
-    BPTR a = Lock((STRPTR)path, SHARED_LOCK), b = Lock((STRPTR)t->dosname, SHARED_LOCK);
+    BPTR a = quiet_lock(path), b = quiet_lock(t->dosname);
     int same = 0;
     if (a && b)
         same = SameLock(a, b) == LOCK_SAME_VOLUME || SameLock(a, b) == LOCK_SAME;
@@ -522,7 +569,7 @@ static int is_boot_volume(const target *t)
 
 static int progdir_on_target(const target *t)
 {
-    BPTR pd = GetProgramDir(), b = Lock((STRPTR)t->dosname, SHARED_LOCK);
+    BPTR pd = GetProgramDir(), b = quiet_lock(t->dosname);
     int same = 0;
     if (pd && b)
         same = SameLock(pd, b) == LOCK_SAME_VOLUME || SameLock(pd, b) == LOCK_SAME;
@@ -655,7 +702,9 @@ static const char *ver_of(const u8 *b, u32 n)
 
 static void report(const target *t, int r)
 {
-    if (r == E_STOP)
+    if (r == E_STOP && fe_log)                 /* the window says what comes next */
+        f2p_log("stopped\n");
+    else if (r == E_STOP)
         f2p_log("stopped: run ffs2pfs %s again to carry on, or ffs2pfs %s ROLLBACK to undo it\n", t->dosname, t->dosname);
     else if (r == E_ROLLEDBACK)
         f2p_log("ffs2pfs: %s\n%s is as it was before; nothing was converted\n", f2p_error, t->dosname);
@@ -687,7 +736,7 @@ int ffs2pfs_run(const runopts *o)
     u8 *loaded = NULL, rdsk[BS];
     const u8 *bin = pfs3aio_bin;
     u32 binlen = (u32)pfs3aio_len, rblk;
-    int r = 20, inhibited = 0, len, bootvol = 0, mode = o->mode;
+    int r = 20, inhibited = 0, held = 0, len, bootvol = 0, mode = o->mode;
     memset(&t, 0, sizeof(t));
     memset(&k, 0, sizeof(k));
     run_why[0] = 0;
@@ -776,7 +825,18 @@ int ffs2pfs_run(const runopts *o)
     disk_blockdev(&k, &d);
     if (rdb_find_rdsk(&d, &rblk, rdsk))
         d.nblocks = L(rdsk, 16) * L(rdsk, 17) * L(rdsk, 18);
-    if (t.mounted) {
+    if (t.mounted && is_busy(&t)) {
+        /* inhibits nest: a run that stopped left the volume inhibited, so that FFS keeps off
+           it. Take that one over, or a rollback would give the volume back to a handler
+           that is still inhibited once */
+        int st = part_state(&d, t.partname);
+        if (st != P_STOPPED && st != P_UNDO && st != P_FINISH && st != P_BAD) {
+            why("%s is inhibited by another program: close it first", t.dosname);
+            goto out;
+        }
+        f2p_log("%s is still inhibited by the run that stopped: this run takes it over\n", t.dosname);
+        inhibited = held = 1;
+    } else if (t.mounted) {
         if (!Inhibit((STRPTR)t.dosname, DOSTRUE)) {
             why("cannot inhibit %s: close everything that uses it", t.dosname);
             goto out;
@@ -817,7 +877,7 @@ int ffs2pfs_run(const runopts *o)
     f2p_log("free memory at the end: %lu KB\n", UL(AvailMem(MEMF_ANY) / 1024));
 out:
     wd_stop();
-    if (inhibited && mode == F2P_DRY)
+    if (inhibited && !held && mode == F2P_DRY)
         Inhibit((STRPTR)t.dosname, DOSFALSE);  /* analyse only: give the volume back */
     disk_close(&k);
     if (imgfh) {

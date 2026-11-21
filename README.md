@@ -13,6 +13,13 @@ FFS volume it was.
 - If anything fails, the volume is rolled back to FFS, exactly as it was.
 - A window (Workbench, or `ffs2pfs` with no arguments) or the Shell.
 
+**Back up the partition before you convert it.** ffs2pfs rewrites the partition on the
+disk itself. It is built to keep every file and to undo its work when something fails,
+but a disk fault, a bug, or another program writing to the disk can still lose data.
+Once a conversion has finished, the only way back to FFS is your backup. Afterwards the
+partition needs PFS3: Amigas mount it with the pfs3aio in its RDB, other systems may not
+read it.
+
 The latest build is the `ffs2pfs` file of the [vLATEST release](https://github.com/terriblefire/ffs2pfs/releases/tag/vLATEST),
 made by GitHub Actions from every push to main. Copy it to C: (or anywhere) on the Amiga.
 To start it from Workbench, give it a tool icon, or use Show > All Files.
@@ -43,11 +50,13 @@ Pick a partition, then:
 | Stop | stops at the next safe point (as Ctrl-C in the Shell) |
 | Save log... | the messages into a file |
 
-Convert and Roll back ask first. The run shows its step (n of 6), a progress bar with
-the time left, and the messages. To list the partitions the window only reads: the RDB
-and blocks 0 and 1 of each partition, and the journal of a conversion that was cut off.
-Disks with no partition in the DOS list are not shown: use the Shell with `DEVICE` and
-`UNIT` for them. To convert the boot volume, copy ffs2pfs to RAM: and start it from there.
+Convert first warns: back the partition up, because once it has finished the only way
+back to FFS is the backup. Then it asks to go ahead, as Roll back does. The run shows its
+step (n of 6), a progress bar with the time left, and the messages. To list the
+partitions the window only reads: the RDB and blocks 0 and 1 of each partition, and the
+journal of a conversion that was cut off. Disks with no partition in the DOS list are not
+shown: use the Shell with `DEVICE` and `UNIT` for them. To convert the boot volume, copy
+ffs2pfs to RAM: and start it from there.
 Keys: cursor up and down pick a partition, A, C, R, S and L as underlined, Esc closes.
 
 ## In the Shell

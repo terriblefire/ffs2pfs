@@ -599,16 +599,31 @@ static void rescan(void)
 static void start(int mode)
 {
     prow *r = row(sel);
-    char t[400];
+    char t[800];
     const char *was, *n;
     if (!r)
         return;
     was = fsname(r->pp.orig_dostype);
     n = r->name[0] ? r->name : "the partition";
     if (mode == F2P_CONVERT && convertible(r)) {
+        snprintf(t, sizeof(t), "WARNING: this rewrites %s:%s%s on the disk itself.\n\n"
+                 "Back up everything on %s: before you go on.\n"
+                 "ffs2pfs keeps every file and undoes its work if\n"
+                 "anything goes wrong, but a disk fault, a bug, or\n"
+                 "a program writing to the disk can still lose data.\n\n"
+                 "Once it has finished, the only way back to %s\n"
+                 "is your backup.\n\n"
+                 "Afterwards %s: needs PFS3. ffs2pfs puts pfs3aio\n"
+                 "into the disk's RDB, so Amigas mount it from there,\n"
+                 "but other systems may not read it.",
+                 n, r->inuse ? " " : "", r->inuse ? r->vol : "", n, was, n);
+        if (!ask("I have a backup|Cancel", t))
+            return;
         snprintf(t, sizeof(t), "Convert %s:%s%s to PFS3?\n\n"
-                 "Every file is kept. If anything goes wrong,\n%s: is put back as it was.\n\n"
-                 "Close the windows and programs that use it first:\nit is locked while ffs2pfs works on it.%s",
+                 "Close the windows and programs that use it first:\n"
+                 "it is locked while ffs2pfs works on it.\n\n"
+                 "If the power fails, start ffs2pfs again: Convert\n"
+                 "carries on, Roll back puts %s: back as it was.%s",
                  n, r->inuse ? " " : "", r->inuse ? r->vol : "", n,
                  r->boot ? "\n\nThis is the boot volume: reboot when it is done." : "");
         if (!ask("Convert|Cancel", t))
