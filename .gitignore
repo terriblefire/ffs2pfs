@@ -5,6 +5,8 @@
 !/.gitignore
 !/.github/
 !/README.md
+!/ffs2pfs.readme
+!/ffs2pfs-src.readme
 !/c/
 !/check/
 !/tests/
