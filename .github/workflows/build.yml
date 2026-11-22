@@ -3,7 +3,10 @@
 # vbcc and the NDK 3.2 in terriblefire78/spirom, an arm64 image, so it runs on an
 # arm64 runner. c/ffs2pfs is kept as a workflow artifact, and every push to main
 # replaces the vLATEST prerelease with it (and the pfs3aio licence, which must go
-# with the binary since pfs3aio is built into it).
+# with the binary since pfs3aio is built into it). The aminet job packs it for
+# Aminet in terriblefire78/amiga-gcc (it has LhA): ffs2pfs.lha (an ffs2pfs drawer
+# with the program and the pfs3aio licence, and ffs2pfs.readme) and
+# ffs2pfs-src.lha (the source in an ffs2pfs-src drawer), each next to its readme.
 name: build
 
 on:
@@ -33,9 +36,58 @@ jobs:
       - name: Build c/f2p_host (gcc)
         run: make -C c f2p_host
 
+  aminet:
+    needs: amiga
+    runs-on: ubuntu-latest
+    container: terriblefire78/amiga-gcc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffs2pfs
+          path: bin
+      - name: Check the readmes (Aminet's rules, and the version of the program)
+        run: |
+          v=$(sed -n 's/.*\$VER: ffs2pfs \([0-9.]*\) .*/\1/p' c/amiga.c)
+          for r in ffs2pfs.readme ffs2pfs-src.readme; do
+            head -1 $r | grep -q '^Short: ' || { echo "$r: Short: must be the first line"; exit 1; }
+            for f in Uploader Type Architecture Version; do
+              grep -q "^$f: " $r || { echo "$r: no $f:"; exit 1; }
+            done
+            s=$(sed -n 's/^Short: *//p' $r)
+            [ ${#s} -le 40 ] || { echo "$r: Short: has ${#s} characters, 40 at most"; exit 1; }
+            grep -q "^Version: *$v\$" $r || { echo "$r: Version: is not $v, as in c/amiga.c"; exit 1; }
+            awk -v r=$r 'length > 78 { print r ":" NR ": longer than 78 characters"; bad = 1 }
+                         /\r/ { print r ":" NR ": CR in the line end"; bad = 1 } END { exit bad }' $r
+          done
+      - name: Pack for Aminet
+        run: |
+          rm -rf aminet
+          mkdir -p aminet/ffs2pfs aminet/ffs2pfs-src
+          cp bin/ffs2pfs ref/pfs3aio.LICENSE aminet/ffs2pfs/
+          chmod 755 aminet/ffs2pfs/ffs2pfs
+          cp -R c tests check tools ref README.md ffs2pfs.readme ffs2pfs-src.readme aminet/ffs2pfs-src/
+          cp ffs2pfs.readme ffs2pfs-src.readme aminet/
+          cd aminet
+          lha ao5q ffs2pfs.lha ffs2pfs/ffs2pfs ffs2pfs/pfs3aio.LICENSE ffs2pfs.readme
+          lha ao5q ffs2pfs-src.lha ffs2pfs-src
+          for a in ffs2pfs ffs2pfs-src; do
+            lha l $a.lha
+            lha t $a.lha
+          done
+          ls -l *.lha *.readme
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aminet
+          path: |
+            aminet/ffs2pfs.lha
+            aminet/ffs2pfs.readme
+            aminet/ffs2pfs-src.lha
+            aminet/ffs2pfs-src.readme
+
   vlatest:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [amiga, host]
+    needs: [amiga, host, aminet]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,6 +97,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ffs2pfs
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          name: aminet
           path: out
       - name: Replace the vLATEST release
         env:
@@ -57,8 +113,11 @@ jobs:
             strings out/ffs2pfs | grep -oE '\$VER: .+' | sed 's/^\$VER: //'
             echo '```'
             echo
+            echo "For Aminet: ffs2pfs.lha and ffs2pfs-src.lha, each with its readme (disk/misc)."
+            echo
             echo "ffs2pfs carries pfs3aio, under the licence in pfs3aio.LICENSE."
             echo "This product includes software developed by Michiel Pelt."; } > out/notes.md
           gh release delete vLATEST --yes --cleanup-tag || true
-          gh release create vLATEST out/ffs2pfs out/pfs3aio.LICENSE --prerelease --target "$GITHUB_SHA" \
+          gh release create vLATEST out/ffs2pfs out/pfs3aio.LICENSE \
+            out/ffs2pfs.lha out/ffs2pfs.readme out/ffs2pfs-src.lha out/ffs2pfs-src.readme --prerelease --target "$GITHUB_SHA" \
             --title "vLATEST (main ${GITHUB_SHA::8})" --notes-file out/notes.md

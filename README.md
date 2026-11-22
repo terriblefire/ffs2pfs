@@ -22,7 +22,9 @@ read it.
 
 The latest build is the `ffs2pfs` file of the [vLATEST release](https://github.com/terriblefire/ffs2pfs/releases/tag/vLATEST),
 made by GitHub Actions from every push to main. Copy it to C: (or anywhere) on the Amiga.
-To start it from Workbench, give it a tool icon, or use Show > All Files.
+To start it from Workbench, give it a tool icon, or use Show > All Files. The release also
+has the Aminet archives (disk/misc), each next to its readme: `ffs2pfs.lha`, the program,
+and `ffs2pfs-src.lha`, the source.
 
 ## The window
 

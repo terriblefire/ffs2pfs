@@ -1,0 +1,165 @@
+Short:        Converts OFS/FFS partitions to PFS3
+Author:       terriblefire
+Uploader:     stephen@terriblefire.com (terriblefire)
+Type:         disk/misc
+Version:      0.3
+Architecture: m68k-amigaos >= 2.0.4
+Requires:     a hard disk with an RDB
+
+ffs2pfs
+=======
+
+ffs2pfs converts an OFS or FFS hard disk partition to PFS3 in place,
+keeping every file. It is built to survive a power cut at any moment:
+after one, it either finishes the conversion or puts the partition back
+to the FFS volume it was.
+
+  - Files, directories, hard and soft links, comments, protection bits
+    and dates are kept.
+  - The partition's RDB entry gets pfs3aio (the PFS3 handler, built into
+    ffs2pfs) and the DosType PFS\3, so the disk mounts and boots as PFS3
+    with no other disk needed.
+  - Every step is journalled on the disk itself. A conversion that was
+    cut off is found again from the disk alone and carries on from where
+    it stopped.
+  - If anything fails, the volume is rolled back to FFS, exactly as it
+    was.
+  - A window (Workbench) or the Shell, on any 68000 or better with
+    Kickstart 2.04 or later.
+
+
+Back up first
+-------------
+
+ffs2pfs rewrites the partition on the disk itself. It is built to keep
+every file and to undo its work when something fails, but a disk fault,
+a bug, or another program writing to the disk can still lose data. Back
+up the partition before you convert it: once a conversion has finished,
+the only way back to FFS is your backup.
+
+Afterwards the partition needs PFS3. Amigas mount it with the pfs3aio in
+its RDB; other systems may not read it.
+
+
+Files
+-----
+
+  ffs2pfs/ffs2pfs            the program (window and Shell)
+  ffs2pfs/pfs3aio.LICENSE    the licence of pfs3aio, which is built in
+  ffs2pfs.readme             this readme
+
+Copy ffs2pfs to C: (or anywhere). To start it from Workbench, give it a
+tool icon, or use Show > All Files in its drawer.
+
+
+The window
+----------
+
+Started from Workbench, or as "ffs2pfs" with no arguments in a Shell,
+ffs2pfs opens a window. It lists the partitions of every disk with an
+RDB, and where each one stands:
+
+  can be converted      OFS or FFS, not the boot volume
+  boot volume           OFS or FFS, the boot volume
+  stopped at step n/6   a conversion was cut off (power cut, Stop)
+  rollback cut off      a rollback was cut off
+  last write left       past the point of no return: Convert finishes it
+  PFS3                  PFS3 already: nothing to do
+  not OFS/FFS           another file system: nothing to do
+
+Pick a partition, then:
+
+  Analyse      checks the volume and the free space it needs, writes
+               nothing
+  Convert      converts it, or carries on with a conversion that was cut
+               off
+  Roll back    puts a conversion that was cut off back to FFS
+  Stop         stops at the next safe point
+  Save log...  the messages into a file
+
+Convert first warns: back the partition up. Then it asks to go ahead, as
+Roll back does. The run shows its step (n of 6), a progress bar with the
+time left, and the messages. Keys: cursor up and down pick a partition,
+A, C, R, S and L as underlined, Esc closes the window.
+
+To convert the boot volume, copy ffs2pfs to RAM: and start it from
+there; reboot when it is done. Disks with no partition in the DOS list
+are not shown: use the Shell with DEVICE and UNIT for them.
+
+
+In the Shell
+------------
+
+  ffs2pfs PARTITION [ANALYSE] [ROLLBACK] [PFS3AIO=file]
+          [DEVICE=name UNIT=n] [NOREMOUNT] [LOG=file] [BOOT]
+
+  ffs2pfs DH1: ANALYSE    checks the volume and the free space it needs,
+                          writes nothing
+  ffs2pfs DH1:            converts DH1:, or carries on with a conversion
+                          that was cut off
+  ffs2pfs DH1: ROLLBACK   puts a conversion that was cut off (power cut,
+                          Ctrl-C) back to FFS
+  DEVICE=scsi.device UNIT=0
+                          finds the partition on the disk when it is not
+                          mounted (a partition being converted has the
+                          DosType F2P\0, which nothing mounts)
+  PFS3AIO=file            puts another pfs3aio into the RDB instead of
+                          the built-in 19.2
+  NOREMOUNT               leaves the volume unmounted at the end
+                          (otherwise it is mounted as PFS3,
+                          write-protected until the next reboot)
+  LOG=file                a copy of the messages
+  BOOT                    converts the boot volume: copy ffs2pfs to
+                          RAM:, run it from there, reboot when it is
+                          done
+
+Return codes: 0 done, 5 stopped by Ctrl-C (run it again to carry on, or
+ROLLBACK), 10 failed but the volume is as it was, 20 error.
+
+The conversion needs free space on the volume for the PFS3 reserved area
+(FFS data blocks in it are moved out first), the plan and journal, and
+the rollback copy. ANALYSE reports how much there is and how much it
+needs.
+
+
+If the power fails
+------------------
+
+Start ffs2pfs again. In the window the partition shows where it stopped:
+Convert carries on from there, Roll back puts it back as it was. In the
+Shell, run the same command again to carry on, or with ROLLBACK to undo
+it.
+
+
+Limits
+------
+
+  - The test suites use OFS and FFS (DOS\0, DOS\1). International and
+    dircache volumes (DOS\2 to DOS\5) are accepted but not in the
+    suites.
+  - Blocks the FFS volume marked free may keep PFS3 data after a
+    rollback. FFS never reads them.
+
+
+History
+-------
+
+  0.3  first release on Aminet: the window, and the Shell
+
+
+Source
+------
+
+The source is in disk/misc/ffs2pfs-src.lha, and at:
+
+  https://github.com/terriblefire/ffs2pfs
+
+
+Credits
+-------
+
+  Michiel Pelt and Toni Wilen   pfs3aio 19.2, built into ffs2pfs, under
+                                the licence in pfs3aio.LICENSE. This
+                                product includes software developed by
+                                Michiel Pelt.
+  terriblefire                  ffs2pfs

@@ -1,0 +1,72 @@
+Short:        Source of the OFS/FFS to PFS3 converter
+Author:       terriblefire
+Uploader:     stephen@terriblefire.com (terriblefire)
+Type:         disk/misc
+Version:      0.3
+Architecture: generic
+
+ffs2pfs source
+==============
+
+The source of ffs2pfs, which converts an OFS or FFS hard disk partition
+to PFS3 in place, keeping every file, and survives a power cut at any
+moment. The program is in disk/misc/ffs2pfs.lha; its readme says what it
+does and how to use it.
+
+
+Files
+-----
+
+  ffs2pfs-src/c/          the converter: the core (no AmigaOS calls),
+                          amiga.c (the Shell), gui.c (the window,
+                          GadTools) and host.c (for the tests)
+  ffs2pfs-src/tests/      the test harnesses (Python), and tests/amidisk/,
+                          the readers they check images with (RDB, FFS,
+                          PFS3)
+  ffs2pfs-src/check/      reads converted images with the real pfs3aio
+                          handler (through AmiFUSE)
+  ffs2pfs-src/tools/      test image makers; amiga/crcwalk.c lists the
+                          CRC of every file on a volume
+  ffs2pfs-src/ref/        pfs3aio 19.2, which the program carries, and
+                          its licence
+  ffs2pfs-src/README.md   the full documentation: how it works, and the
+                          tests and their results
+
+
+Building
+--------
+
+The Amiga binary is cross-compiled with vbcc and the NDK 3.2; the host
+build (the same converter on a disk image file, for the tests) needs gcc:
+
+  make -C c ffs2pfs NDK32=/path/to/NDK3.2
+  make -C c f2p_host
+
+The Makefile turns ref/pfs3aio into C data with xxd. The program is
+built with -cpu=68000 and runs on every Amiga with Kickstart 2.04 or
+later.
+
+
+Testing
+-------
+
+The tests cut a conversion off after every single block write, also with
+the last write torn, and check that it then either finishes or rolls
+back to the FFS volume it was, with every file intact. README.md has the
+suites and their results.
+
+
+History
+-------
+
+  0.3  first release on Aminet: the window, and the Shell
+
+
+Credits
+-------
+
+  Michiel Pelt and Toni Wilen   pfs3aio 19.2 (ref/pfs3aio), under the
+                                licence in ref/pfs3aio.LICENSE. This
+                                product includes software developed by
+                                Michiel Pelt.
+  terriblefire                  ffs2pfs
